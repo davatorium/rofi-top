@@ -99,6 +99,11 @@ static void load_pid ( pid_t pid, TOPProcessInfo *entry )
 
     glibtop_proc_args  args;
     char *arg = glibtop_get_proc_args ( &(args),entry->pid, 0 );
+    for ( size_t i = 0; i < (args.size-1); i++){
+        if ( arg[i] == '\0' ){
+            arg[i] = ' ';
+        }
+    }
     entry->command_args = g_path_get_basename ( arg );
 
     g_free ( arg );
