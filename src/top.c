@@ -104,7 +104,8 @@ static void load_pid ( pid_t pid, TOPProcessInfo *entry )
             arg[i] = ' ';
         }
     }
-    entry->command_args = g_path_get_basename ( arg );
+    printf("arg: %s\n",arg);
+    entry->command_args = g_strdup(arg);//g_path_get_basename ( arg );
 
     g_free ( arg );
 }
