@@ -30,6 +30,9 @@
 #include <errno.h>
 #include <gmodule.h>
 
+#include <sys/types.h>
+#include <signal.h>
+
 #include <rofi/mode.h>
 #include <rofi/helper.h>
 #include <rofi/mode-private.h>
@@ -54,11 +57,28 @@ typedef struct
     char *command_args;
 } TOPProcessInfo;
 
+typedef enum {
+    SORT_MEM     = 0,
+    SORT_PID     = 1,
+    SORT_TIME    = 2,
+    SORT_NAME    = 3,
+    SORT_ALL     = 4
+} TOPSort;
+
+const char *topsort[SORT_ALL] = {
+    "Memory",
+    "Pid",
+    "Time",
+    "Name",
+};
+
 /**
  * The internal data structure holding the private data of the TEST Mode.
  */
 typedef struct
 {
+    TOPSort sorting;
+    gboolean sort_order;
     guint timeout;
     /** List of processes */
     TOPProcessInfo *array;
@@ -86,10 +106,19 @@ static void load_pid ( pid_t pid, TOPProcessInfo *entry )
 
 static int sorting_info ( gconstpointer a, gconstpointer b, gpointer data)
 {
-    TOPProcessInfo *ai = (TOPProcessInfo*)a;
-    TOPProcessInfo *bi = (TOPProcessInfo*)b;
-
-    return bi->mem.rss-ai->mem.rss;
+    TOPModePrivateData *rmpd = (TOPModePrivateData*)(data);
+    TOPProcessInfo *ai = (TOPProcessInfo*)((rmpd->sort_order)?a:b);
+    TOPProcessInfo *bi = (TOPProcessInfo*)((rmpd->sort_order)?b:a);
+    switch ( rmpd->sorting ){
+        case SORT_PID:
+            return bi->pid - ai->pid;
+        case SORT_TIME:
+            return (bi->time.rtime) - (ai->time.rtime);
+        case SORT_NAME:
+            return g_strcmp0(bi->command_args, ai->command_args);
+        default:
+            return bi->mem.rss-ai->mem.rss;
+    }
 }
 
 static void get_top (  Mode *sw )
@@ -108,18 +137,17 @@ static void get_top (  Mode *sw )
     rmpd->array = g_malloc0(sizeof(TOPProcessInfo)*rmpd->array_length);
     for ( size_t i = 0; i < rmpd->array_length;i++)
     {
-        load_pid ( pid_list[i], &(rmpd->array[i])); 
+        load_pid ( pid_list[i], &(rmpd->array[i]));
     }
 
     g_free ( pid_list );
-    
+
     g_qsort_with_data ( rmpd->array, rmpd->array_length, sizeof(TOPProcessInfo), sorting_info, rmpd);
 }
 
 static gboolean timeout_function ( gpointer data )
 {
     Mode *sw = (Mode *) data;
-    printf("reload\n");
     get_top ( sw );
 
     rofi_view_reload ();
@@ -140,7 +168,7 @@ static int top_mode_init ( Mode *sw )
 static unsigned int top_mode_get_num_entries ( const Mode *sw )
 {
     const TOPModePrivateData *rmpd = (const TOPModePrivateData *) mode_get_private_data ( sw );
-    return rmpd->array_length; 
+    return rmpd->array_length;
 }
 
 static ModeMode top_mode_result ( Mode *sw, int mretv, char **input, unsigned int selected_line )
@@ -153,7 +181,19 @@ static ModeMode top_mode_result ( Mode *sw, int mretv, char **input, unsigned in
         retv = PREVIOUS_DIALOG;
     } else if ( mretv & MENU_QUICK_SWITCH ) {
         retv = ( mretv & MENU_LOWER_MASK );
+        int new_sort = retv%SORT_ALL;
+        if ( new_sort != rmpd->sorting ){
+            rmpd->sorting = new_sort;
+        } else {
+            rmpd->sort_order = !(rmpd->sort_order);
+        }
+        retv = RESET_DIALOG;
     } else if ( ( mretv & MENU_OK ) ) {
+        retv = RESET_DIALOG;
+    } else if ( ( mretv & MENU_ENTRY_DELETE ) == MENU_ENTRY_DELETE ) {
+        if ( selected_line < rmpd->array_length ){
+            kill ( rmpd->array[selected_line].pid, SIGTERM);
+        }
         retv = RESET_DIALOG;
     }
     return retv;
@@ -171,9 +211,10 @@ static void top_mode_destroy ( Mode *sw )
 
 static char *node_get_display_string ( TOPProcessInfo *info )
 {
-    return g_strdup_printf("%5d %4lu:%02lu %6.2fMiB %s",
+    return g_strdup_printf("%5d %02lu:%02lu:%02lu %6.2fMiB %s",
             info->pid,
-            info->time.rtime/60,
+            (info->time.rtime/3600),
+            (info->time.rtime/60)%60,
             info->time.rtime%60,
             (info->mem.rss-info->mem.share)/(1024*1024.0),
             info->command_args);
@@ -203,7 +244,7 @@ Mode mode =
     ._token_match       = top_token_match,
     ._get_display_value = _get_display_value,
     ._get_completion    = NULL,
-    ._preprocess_input  = NULL, 
+    ._preprocess_input  = NULL,
     .private_data       = NULL,
     .free               = NULL,
 };
