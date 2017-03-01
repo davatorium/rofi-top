@@ -43,6 +43,9 @@
 #include <glibtop/proctime.h>
 #include <glibtop/procmem.h>
 #include <glibtop/procuid.h>
+#include <glibtop/loadavg.h>
+#include <glibtop/mem.h>
+#include <glibtop/swap.h>
 
 G_MODULE_EXPORT Mode mode;
 
@@ -65,11 +68,16 @@ typedef enum {
     SORT_ALL     = 4
 } TOPSort;
 
-const char *topsort[SORT_ALL] = {
+const char *sorting_name[SORT_ALL] = {
     "Memory",
     "Pid",
     "Time",
     "Name",
+};
+
+const char *sorting_order_name[] = {
+    "Ascending",
+    "Descending",
 };
 
 /**
@@ -238,6 +246,26 @@ static int top_token_match ( const Mode *sw, GRegex **tokens, unsigned int index
     return helper_token_match ( tokens, rmpd->array[index].command_args);
 }
 
+static char * top_get_message ( const Mode *sw )
+{
+    const TOPModePrivateData *pd = (const TOPModePrivateData *) mode_get_private_data ( sw );
+
+    glibtop_loadavg buf;
+    glibtop_mem mbuf;
+    glibtop_swap sbuf;
+    glibtop_get_loadavg ( &buf );
+    glibtop_get_mem ( &mbuf );
+    glibtop_get_swap ( &sbuf );
+    char *retv = g_markup_printf_escaped (
+            "<b>Sorting:</b> %-10s <b>Load:</b>    %.2lf %.2lf %.2lf\n"\
+            "<b>Order:  </b> %-10s <b>Memory:</b> %5.1lf%% <b>Swap:</b> %5.1lf%%",
+                sorting_name[pd->sorting], buf.loadavg[0], buf.loadavg[1], buf.loadavg[2],
+                sorting_order_name[pd->sort_order], ((mbuf.used-mbuf.cached-mbuf.buffer)*100)/(double)mbuf.total,
+                (sbuf.total>0)?(((sbuf.used)*100)/(double)sbuf.total):0.0
+            );
+    return retv;
+}
+
 Mode mode =
 {
     .abi_version        = ABI_VERSION,
@@ -249,6 +277,7 @@ Mode mode =
     ._destroy           = top_mode_destroy,
     ._token_match       = top_token_match,
     ._get_display_value = _get_display_value,
+    ._get_message       = top_get_message,
     ._get_completion    = NULL,
     ._preprocess_input  = NULL,
     .private_data       = NULL,
