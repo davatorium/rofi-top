@@ -106,15 +106,13 @@ static void load_pid ( pid_t pid, TOPProcessInfo *entry )
     glibtop_get_proc_time ( &(entry->time),entry->pid );
 
     glibtop_proc_args  args;
-    char *arg = glibtop_get_proc_args ( &(args),entry->pid, 0 );
-    for ( size_t i = 0; i < (args.size-1); i++){
-        if ( arg[i] == '\0' ){
-            arg[i] = ' ';
-        }
+    char **argv = glibtop_get_proc_argv ( &(args),entry->pid, 0 );
+    if ( argv != NULL ){
+        entry->command_args = g_strjoinv ( " ", argv );
+        g_strfreev ( argv );
+    } else {
+        entry->command_args = g_strdup("n/a");
     }
-    entry->command_args = g_strdup(arg);//g_path_get_basename ( arg );
-
-    g_free ( arg );
 }
 
 static int sorting_info ( gconstpointer a, gconstpointer b, gpointer data)
