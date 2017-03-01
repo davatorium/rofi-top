@@ -46,6 +46,9 @@
 #include <glibtop/loadavg.h>
 #include <glibtop/mem.h>
 #include <glibtop/swap.h>
+#include <glibtop/sysinfo.h>
+
+#include <stdint.h>
 
 G_MODULE_EXPORT Mode mode;
 
@@ -57,7 +60,13 @@ typedef struct
     glibtop_proc_mem   mem;
     glibtop_proc_uid   uid;
 
+    guint64 last_rtime;
+
+    double cpu;
+
     char *command_args;
+    /** seen */
+    gboolean seen;
 } TOPProcessInfo;
 
 typedef enum {
@@ -65,7 +74,8 @@ typedef enum {
     SORT_PID     = 1,
     SORT_TIME    = 2,
     SORT_NAME    = 3,
-    SORT_ALL     = 4
+    SORT_CPU     = 4,
+    SORT_ALL     = 5
 } TOPSort;
 
 const char *sorting_name[SORT_ALL] = {
@@ -73,6 +83,7 @@ const char *sorting_name[SORT_ALL] = {
     "Pid",
     "Time",
     "Name",
+    "CPU"
 };
 
 const char *sorting_order_name[] = {
@@ -85,6 +96,8 @@ const char *sorting_order_name[] = {
  */
 typedef struct
 {
+    const glibtop_sysinfo *sysinfo;
+    glibtop_cpu cpu_last;
     TOPSort sorting;
     gboolean sort_order;
     guint timeout;
@@ -98,21 +111,34 @@ static void free_pid ( TOPProcessInfo *entry )
     g_free ( entry->command_args );
 }
 
-static void load_pid ( pid_t pid, TOPProcessInfo *entry )
+static void load_pid ( pid_t pid, TOPProcessInfo *entry, guint64 passed )
 {
     entry->pid = pid;
     glibtop_get_proc_uid  ( &(entry->uid) ,entry->pid );
     glibtop_get_proc_mem  ( &(entry->mem) ,entry->pid );
     glibtop_get_proc_time ( &(entry->time),entry->pid );
 
-    glibtop_proc_args  args;
-    char **argv = glibtop_get_proc_argv ( &(args),entry->pid, 0 );
-    if ( argv != NULL ){
-        entry->command_args = g_strjoinv ( " ", argv );
-        g_strfreev ( argv );
-    } else {
-        entry->command_args = g_strdup("n/a");
+    entry->cpu = 0;
+    if ( entry->last_rtime > 0 ){
+        guint64 time = entry->time.rtime - entry->last_rtime;
+        if ( passed > 0 ){
+            entry->cpu = (100*time)/(double)passed;
+        }
+
     }
+
+    if ( entry->command_args == NULL ) {
+        glibtop_proc_args  args;
+        char **argv = glibtop_get_proc_argv ( &(args),entry->pid, 0 );
+        if ( argv != NULL ){
+            entry->command_args = g_strjoinv ( " ", argv );
+            g_strfreev ( argv );
+        } else {
+            entry->command_args = g_strdup("n/a");
+        }
+    }
+
+    entry->last_rtime = entry->time.rtime;
 }
 
 static int sorting_info ( gconstpointer a, gconstpointer b, gpointer data)
@@ -127,33 +153,93 @@ static int sorting_info ( gconstpointer a, gconstpointer b, gpointer data)
             return (bi->time.rtime) - (ai->time.rtime);
         case SORT_NAME:
             return g_strcmp0(bi->command_args, ai->command_args);
+        case SORT_CPU:
+            return (bi->cpu > ai->cpu)? -1 : ((bi->cpu < ai->cpu)? 1: 0);
         default:
             return (bi->mem.rss-bi->mem.share) - (ai->mem.rss - ai->mem.share);
     }
 }
+static int sorting_pid_t ( gconstpointer a, gconstpointer b, gpointer data)
+{
+    TOPModePrivateData *rmpd = (TOPModePrivateData*)(data);
+    TOPProcessInfo *ai = (TOPProcessInfo*)(a);
+    TOPProcessInfo *bi = (TOPProcessInfo*)(b);
+    return ai->pid - bi->pid;
+}
+
+static pid_t sort_pid_t ( gconstpointer a, gconstpointer b, G_GNUC_UNUSED gpointer data )
+{
+    pid_t pa = *((pid_t*)a);
+    pid_t pb = *((pid_t*)b);
+    return pa -pb;
+}
+
 
 static void get_top (  Mode *sw )
 {
-    TOPModePrivateData *rmpd = (TOPModePrivateData *) mode_get_private_data ( sw );
-    for ( size_t i = 0; i < rmpd->array_length; i++ ) {
-        free_pid ( &(rmpd->array[i]) );
-    }
-    g_free ( rmpd->array );
-    rmpd->array        = NULL;
-    rmpd->array_length = 0;
-
+    glibtop_cpu cpu_now;
     glibtop_proclist proclistbuf;
+    TOPModePrivateData *rmpd = (TOPModePrivateData *) mode_get_private_data ( sw );
+
+
+    glibtop_get_cpu ( &(cpu_now));
+    guint64 passed = cpu_now.total-rmpd->cpu_last.total;
+
     pid_t *pid_list = glibtop_get_proclist ( &proclistbuf, GLIBTOP_KERN_PROC_ALL|GLIBTOP_EXCLUDE_SYSTEM, 0);
+
+
+    g_qsort_with_data ( rmpd->array, rmpd->array_length, sizeof(TOPProcessInfo), sorting_pid_t, rmpd);
+    g_qsort_with_data ( pid_list, proclistbuf.number, sizeof(pid_t), sort_pid_t, NULL);
+
+    // Mark as not seen
+    size_t pi = 0;
+    size_t i =0;
+    size_t removed = 0,new = 0;
+    while ( i < rmpd->array_length  ) {
+        rmpd->array[i].seen = FALSE;
+        if ( rmpd->array[i].pid == pid_list[pi]) {
+            rmpd->array[i].seen = TRUE;
+            pid_list[pi] = 0;
+            pi++;
+            i++;
+        }
+        else if ( rmpd->array[i].pid > pid_list[pi] ){
+            pi++;
+        } else {
+            free_pid ( &(rmpd->array[i]));
+            rmpd->array[i].pid = INT32_MAX;
+            i++;
+            removed++;
+        }
+    }
+    for ( i = 0; i < proclistbuf.number; i++){
+        if ( pid_list[i] > 0 ){
+            new++;
+        }
+    }
+
+    g_qsort_with_data ( rmpd->array, rmpd->array_length, sizeof(TOPProcessInfo), sorting_pid_t, rmpd);
     rmpd->array_length = proclistbuf.number;
-    rmpd->array = g_malloc0(sizeof(TOPProcessInfo)*rmpd->array_length);
+    rmpd->array = g_realloc(rmpd->array,sizeof(TOPProcessInfo)*rmpd->array_length);
+    for ( pi = 0; pi < proclistbuf.number; pi++){
+        if ( pid_list[pi] != 0 ){
+            memset ( &(rmpd->array[proclistbuf.number-new]), '\0',sizeof(TOPProcessInfo) );
+            rmpd->array[proclistbuf.number-new].pid = pid_list[pi];
+            new--;
+        }
+    }
+
     for ( size_t i = 0; i < rmpd->array_length;i++)
     {
-        load_pid ( pid_list[i], &(rmpd->array[i]));
+        load_pid ( rmpd->array[i].pid, &(rmpd->array[i]), passed);
     }
 
     g_free ( pid_list );
 
+    // Sort it back.
     g_qsort_with_data ( rmpd->array, rmpd->array_length, sizeof(TOPProcessInfo), sorting_info, rmpd);
+
+    rmpd->cpu_last = cpu_now;
 }
 
 static gboolean timeout_function ( gpointer data )
@@ -170,7 +256,9 @@ static int top_mode_init ( Mode *sw )
     if ( mode_get_private_data ( sw ) == NULL ) {
         TOPModePrivateData *pd = g_malloc0 ( sizeof ( *pd ) );
         mode_set_private_data ( sw, (void *) pd );
-
+        pd->sysinfo = glibtop_get_sysinfo();
+        pd->sorting = SORT_PID;
+        pd->sort_order = TRUE;
         pd->timeout = g_timeout_add_seconds ( 1, timeout_function, sw );
         get_top ( sw );
     }
@@ -220,13 +308,14 @@ static void top_mode_destroy ( Mode *sw )
     }
 }
 
-static char *node_get_display_string ( TOPProcessInfo *info )
+static char *node_get_display_string ( const TOPModePrivateData *pd, TOPProcessInfo *info )
 {
     unsigned int h = (info->time.rtime/3600);
     unsigned int m = (info->time.rtime/60)%60;
     unsigned int s = (info->time.rtime%60);
-    return g_strdup_printf("%5d %02u:%02u:%02u %6.2fMiB %s",
+    return g_strdup_printf("%5d %5.1f%% %02u:%02u:%02u %6.2fMiB %s",
             info->pid,
+            pd->sysinfo->ncpu*info->cpu,
             h,m,s,
             (info->mem.rss-info->mem.share)/(1024*1024.0),
             info->command_args);
@@ -235,7 +324,7 @@ static char *node_get_display_string ( TOPProcessInfo *info )
 static char *_get_display_value ( const Mode *sw, unsigned int selected_line, G_GNUC_UNUSED int *state, int get_entry )
 {
     TOPModePrivateData *rmpd = (TOPModePrivateData *) mode_get_private_data ( sw );
-    return get_entry ? node_get_display_string ( &(rmpd->array[selected_line])) : NULL;
+    return get_entry ? node_get_display_string ( rmpd, &(rmpd->array[selected_line])) : NULL;
 }
 
 static int top_token_match ( const Mode *sw, GRegex **tokens, unsigned int index )
