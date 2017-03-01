@@ -104,7 +104,6 @@ static void load_pid ( pid_t pid, TOPProcessInfo *entry )
             arg[i] = ' ';
         }
     }
-    printf("arg: %s\n",arg);
     entry->command_args = g_strdup(arg);//g_path_get_basename ( arg );
 
     g_free ( arg );
@@ -123,7 +122,7 @@ static int sorting_info ( gconstpointer a, gconstpointer b, gpointer data)
         case SORT_NAME:
             return g_strcmp0(bi->command_args, ai->command_args);
         default:
-            return bi->mem.rss-ai->mem.rss;
+            return (bi->mem.rss-bi->mem.share) - (ai->mem.rss - ai->mem.share);
     }
 }
 
@@ -217,11 +216,12 @@ static void top_mode_destroy ( Mode *sw )
 
 static char *node_get_display_string ( TOPProcessInfo *info )
 {
-    return g_strdup_printf("%5d %02lu:%02lu:%02lu %6.2fMiB %s",
+    unsigned int h = (info->time.rtime/3600);
+    unsigned int m = (info->time.rtime/60)%60;
+    unsigned int s = (info->time.rtime%60);
+    return g_strdup_printf("%5d %02u:%02u:%02u %6.2fMiB %s",
             info->pid,
-            (info->time.rtime/3600),
-            (info->time.rtime/60)%60,
-            info->time.rtime%60,
+            h,m,s,
             (info->mem.rss-info->mem.share)/(1024*1024.0),
             info->command_args);
 }
