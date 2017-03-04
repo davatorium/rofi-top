@@ -310,9 +310,10 @@ static void top_mode_destroy ( Mode *sw )
 
 static char *node_get_display_string ( const TOPModePrivateData *pd, TOPProcessInfo *info )
 {
-    unsigned int h = (info->time.rtime/3600);
-    unsigned int m = (info->time.rtime/60)%60;
-    unsigned int s = (info->time.rtime%60);
+    guint64  time = info->time.rtime/info->time.frequency;
+    unsigned int h = (time/3600);
+    unsigned int m = (time/60)%60;
+    unsigned int s = (time%60);
     return g_strdup_printf("%5d %5.1f%% %02u:%02u:%02u %6.2fMiB %s",
             info->pid,
             pd->sysinfo->ncpu*info->cpu,
