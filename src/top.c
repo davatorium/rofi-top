@@ -286,14 +286,14 @@ static ModeMode top_mode_result ( Mode *sw, int mretv, char **input, unsigned in
         } else {
             rmpd->sort_order = !(rmpd->sort_order);
         }
-        retv = RESET_DIALOG;
+        retv = RELOAD_DIALOG;
     } else if ( ( mretv & MENU_OK ) ) {
-        retv = RESET_DIALOG;
+        retv = RELOAD_DIALOG;
     } else if ( ( mretv & MENU_ENTRY_DELETE ) == MENU_ENTRY_DELETE ) {
         if ( selected_line < rmpd->array_length ){
             kill ( rmpd->array[selected_line].pid, SIGTERM);
         }
-        retv = RESET_DIALOG;
+        retv = RELOAD_DIALOG;
     }
     return retv;
 }
