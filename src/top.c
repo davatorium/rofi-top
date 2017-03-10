@@ -322,7 +322,7 @@ static char *node_get_display_string ( const TOPModePrivateData *pd, TOPProcessI
             info->command_args);
 }
 
-static char *_get_display_value ( const Mode *sw, unsigned int selected_line, G_GNUC_UNUSED int *state, int get_entry )
+static char *_get_display_value ( const Mode *sw, unsigned int selected_line, G_GNUC_UNUSED int *state, G_GNUC_UNUSED GList **attr_list, int get_entry )
 {
     TOPModePrivateData *rmpd = (TOPModePrivateData *) mode_get_private_data ( sw );
     return get_entry ? node_get_display_string ( rmpd, &(rmpd->array[selected_line])) : NULL;
