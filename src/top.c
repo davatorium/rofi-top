@@ -346,7 +346,7 @@ static char * top_get_message ( const Mode *sw )
     glibtop_get_swap ( &sbuf );
     char *retv = g_markup_printf_escaped (
             "<b>Sorting:</b> %-10s <b>Load:</b>    %.2lf %.2lf %.2lf\n"\
-            "<b>Order:  </b> %-10s <b>Memory:</b> %5.1lf%% <b>Swap:</b> %5.1lf%%",
+            "<b>Order:  </b> %-10s <b>Memory:</b> %5.1lf%%            <b>Swap:</b> %5.1lf%%",
                 sorting_name[pd->sorting], buf.loadavg[0], buf.loadavg[1], buf.loadavg[2],
                 sorting_order_name[pd->sort_order], ((mbuf.used-mbuf.cached-mbuf.buffer)*100)/(double)mbuf.total,
                 (sbuf.total>0)?(((sbuf.used)*100)/(double)sbuf.total):0.0

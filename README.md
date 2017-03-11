@@ -28,7 +28,7 @@ The following keybindings change sorting:
 
 Repeatingly selecting the entry will change sort order.
 
-
+The current setting is not stored between consecutive runs.
 ## Compilation
 
 ### Dependencies
