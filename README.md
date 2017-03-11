@@ -25,10 +25,14 @@ Repeatingly selecting the entry will change sort order.
 
 ### Dependencies
 
- * libgtop 2.34
- * rofi 1.4 or up.
+| Library       | Version |
+|---------------|---------|
+| libgtop 2.34  | 2.34    |
+| rofi 	  	    | 1.4	  |
 
 ### Installation
+
+**Rofi-top** uses autotools as build system. If installing from git, the following steps should install it:
 
 ```bash
 $ autoreconf -i
