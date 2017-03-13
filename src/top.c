@@ -314,12 +314,15 @@ static char *node_get_display_string ( const TOPModePrivateData *pd, TOPProcessI
     unsigned int h = (time/3600);
     unsigned int m = (time/60)%60;
     unsigned int s = (time%60);
-    return g_strdup_printf("%5d %5.1f%% %02u:%02u:%02u %6.2fMiB %s",
+    char *memory = g_format_size_full ( info->mem.rss-info->mem.share, G_FORMAT_SIZE_IEC_UNITS );
+    char *retv = g_strdup_printf("%5d %5.1f%% %02u:%02u:%02u %10s %s",
             info->pid,
             pd->sysinfo->ncpu*info->cpu,
             h,m,s,
-            (info->mem.rss-info->mem.share)/(1024*1024.0),
+            memory,
             info->command_args);
+    g_free ( memory );
+    return retv;
 }
 
 static char *_get_display_value ( const Mode *sw, unsigned int selected_line, G_GNUC_UNUSED int *state, G_GNUC_UNUSED GList **attr_list, int get_entry )
