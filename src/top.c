@@ -67,6 +67,7 @@ typedef struct
     char *command_args;
     /** seen */
     gboolean seen;
+
 } TOPProcessInfo;
 
 typedef enum {
@@ -104,6 +105,10 @@ typedef struct
     /** List of processes */
     TOPProcessInfo *array;
     size_t          array_length;
+
+    /** KeyFile */
+    GKeyFile *config_file;
+    char *cf_filename;
 } TOPModePrivateData;
 
 static void free_pid ( TOPProcessInfo *entry )
@@ -242,6 +247,8 @@ static void get_top (  Mode *sw )
     rmpd->cpu_last = cpu_now;
 }
 
+extern void rofi_view_reload ( void );
+
 static gboolean timeout_function ( gpointer data )
 {
     Mode *sw = (Mode *) data;
@@ -251,6 +258,8 @@ static gboolean timeout_function ( gpointer data )
     return G_SOURCE_CONTINUE;
 }
 
+extern char *config_path;
+
 static int top_mode_init ( Mode *sw )
 {
     if ( mode_get_private_data ( sw ) == NULL ) {
@@ -259,6 +268,13 @@ static int top_mode_init ( Mode *sw )
         pd->sysinfo = glibtop_get_sysinfo();
         pd->sorting = SORT_PID;
         pd->sort_order = TRUE;
+
+        pd->cf_filename = g_strconcat ( config_path, ".top", NULL);
+        pd->config_file = g_key_file_new ();
+        if ( g_key_file_load_from_file ( pd->config_file, pd->cf_filename, G_KEY_FILE_NONE, NULL ) ) {
+            pd->sorting   = g_key_file_get_integer ( pd->config_file, "general", "sorting", NULL );
+            pd->sort_order= g_key_file_get_integer ( pd->config_file, "general", "ordering", NULL );
+        }
         pd->timeout = g_timeout_add_seconds ( 1, timeout_function, sw );
         get_top ( sw );
     }
@@ -303,6 +319,14 @@ static void top_mode_destroy ( Mode *sw )
     TOPModePrivateData *rmpd = (TOPModePrivateData *) mode_get_private_data ( sw );
     if ( rmpd != NULL ) {
         g_source_remove ( rmpd->timeout );
+
+        if ( rmpd->config_file ){
+            g_key_file_set_integer ( rmpd->config_file, "general", "sorting", rmpd->sorting );
+            g_key_file_set_integer ( rmpd->config_file, "general", "ordering", rmpd->sort_order );
+            g_key_file_save_to_file ( rmpd->config_file, rmpd->cf_filename, NULL );
+            g_key_file_free ( rmpd->config_file );
+        }
+        g_free (rmpd->cf_filename );
         g_free ( rmpd );
         mode_set_private_data ( sw, NULL );
     }
