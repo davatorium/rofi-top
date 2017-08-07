@@ -258,7 +258,6 @@ static gboolean timeout_function ( gpointer data )
     return G_SOURCE_CONTINUE;
 }
 
-extern char *config_path;
 
 static int top_mode_init ( Mode *sw )
 {
@@ -269,7 +268,14 @@ static int top_mode_init ( Mode *sw )
         pd->sorting = SORT_PID;
         pd->sort_order = TRUE;
 
-        pd->cf_filename = g_strconcat ( config_path, ".top", NULL);
+        const char *cpath = g_get_user_config_dir ();
+        char *config_path = NULL;
+        if ( cpath ) {
+            config_path     = g_build_filename ( cpath, "rofi", "config.top", NULL );
+        } else {
+            config_path = g_build_filename ( g_get_home_dir(), ".rofi-config.top", NULL);
+        }
+        pd->cf_filename = config_path;
         pd->config_file = g_key_file_new ();
         if ( g_key_file_load_from_file ( pd->config_file, pd->cf_filename, G_KEY_FILE_NONE, NULL ) ) {
             pd->sorting   = g_key_file_get_integer ( pd->config_file, "general", "sorting", NULL );
@@ -349,10 +355,14 @@ static char *node_get_display_string ( const TOPModePrivateData *pd, TOPProcessI
     return retv;
 }
 
-static char *_get_display_value ( const Mode *sw, unsigned int selected_line, G_GNUC_UNUSED int *state, G_GNUC_UNUSED GList **attr_list, int get_entry )
+static char *_get_display_value ( const Mode *sw, unsigned int selected_line, int *state, G_GNUC_UNUSED GList **attr_list, int get_entry )
 {
     TOPModePrivateData *rmpd = (TOPModePrivateData *) mode_get_private_data ( sw );
-    return get_entry ? node_get_display_string ( rmpd, &(rmpd->array[selected_line])) : NULL;
+    TOPProcessInfo *info = &(rmpd->array[selected_line]);
+    if( (rmpd->sysinfo->ncpu*info->cpu) > 80 ) {
+        *state |= 1; // FIX this to be enum in mode.h.
+    }
+    return get_entry ? node_get_display_string ( rmpd,info ) : NULL;
 }
 
 static int top_token_match ( const Mode *sw, GRegex **tokens, unsigned int index )
