@@ -281,7 +281,7 @@ static int top_mode_init ( Mode *sw )
             pd->sorting   = g_key_file_get_integer ( pd->config_file, "general", "sorting", NULL );
             pd->sort_order= g_key_file_get_integer ( pd->config_file, "general", "ordering", NULL );
         }
-        pd->timeout = g_timeout_add_seconds ( 1, timeout_function, sw );
+        pd->timeout = g_timeout_add_seconds ( 3, timeout_function, sw );
         get_top ( sw );
     }
     return TRUE;
