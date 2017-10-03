@@ -365,7 +365,7 @@ static char *_get_display_value ( const Mode *sw, unsigned int selected_line, in
     return get_entry ? node_get_display_string ( rmpd,info ) : NULL;
 }
 
-static int top_token_match ( const Mode *sw, GRegex **tokens, unsigned int index )
+static int top_token_match ( const Mode *sw, rofi_int_matcher **tokens, unsigned int index )
 {
     TOPModePrivateData *rmpd = (TOPModePrivateData *) mode_get_private_data ( sw );
     return helper_token_match ( tokens, rmpd->array[index].command_args);
